@@ -1,3 +1,14 @@
+-- chatUtils for TES3MP 0.8 by HotaruBlaze
+-- Repository: https://github.com/HotaruBlaze/tes3mp-chatUtils
+-- Version: 2.0
+--
+-- Changelog:
+-- 1.0 - Initial release
+-- 2.0 - Implement local chat - Loosly based on defaultChatLocal & CoreScripts
+--
+
+local localChatByDefault = false
+
 local chatUtils = {}
 local colorBlacklist = { "black", "navy", "midnightblue", "darkblue" }
 chatUtils.availableColorsList = {}
@@ -21,6 +32,34 @@ chatUtils.gatherColors = function()
 	end
 	
 	table.sort(chatUtils.availableColorsList)
+end
+
+chatUtils.localMessage = function(pid, playerMessage)
+    local cellDescription = Players[pid].data.location.cell
+    if logicHandler.IsCellLoaded(cellDescription) == true then
+        for index, visitorPid in pairs(LoadedCells[cellDescription].visitors) do
+            local message = "[Local]: "..playerMessage .."\n"
+            tes3mp.SendMessage(visitorPid, message, false)
+        end
+    end
+end
+
+chatUtils.generateMessage = function(pid, message)
+	local playerColor
+	if Players[pid].data.customVariables.chatColor then
+		playerColor = color[Players[pid].data.customVariables.chatColor]
+	else
+		playerColor = color.Default
+	end
+
+	local msg = playerColor .. logicHandler.GetChatName(pid) .. color.Default .. ": "
+	msg = msg .. message
+
+	--if player title isn't nil then add it to the start of the message
+	if Players[pid].data.customVariables.customTitle ~= nil then
+		msg = color.Orange .. "[" .. Players[pid].data.customVariables.customTitle .. "] " .. color.Default .. msg
+	end
+	return msg
 end
 
 customCommandHooks.registerCommand("settitle", function(pid, cmd)
@@ -57,28 +96,27 @@ customCommandHooks.registerCommand("setcolor", function(pid, cmd)
 	tes3mp.ListBox(pid, 32965, title, list)
 end)
 
+-- Add global chat command if local is enabled
+if localChatByDefault then
+	customCommandHooks.registerCommand("global", function(pid, cmd)
+		local PlayerMessage = chatUtils.generateMessage(pid, tableHelper.concatenateFromIndex(cmd, 2))
+		tes3mp.SendMessage(pid, PlayerMessage .. "\n", true)
+	end)
+end
+
 customEventHooks.registerValidator("OnPlayerSendMessage", function(eventStatus, pid, message)
 	--if its a command then return cus we want the command handler to run that
 	if message:sub(1, 1) == "/" then
 		return
 	end
-	local playerColor
+	
+	local processedMessage = chatUtils.generateMessage(pid, message)
 
-	if Players[pid].data.customVariables.chatColor then
-		playerColor = color[Players[pid].data.customVariables.chatColor]
+	if localChatByDefault then
+		chatUtils.localMessage(pid, processedMessage)
 	else
-		playerColor = color.Default
+		tes3mp.SendMessage(pid, processedMessage .. "\n", true)
 	end
-
-	local msg = playerColor .. logicHandler.GetChatName(pid) .. color.Default .. ": "
-	msg = msg .. message
-
-	--if player title isn't nil then add it to the start of the message
-	if Players[pid].data.customVariables.customTitle ~= nil then
-		msg = color.Orange .. "[" .. Players[pid].data.customVariables.customTitle .. "] " .. color.Default .. msg
-	end
-
-	tes3mp.SendMessage(pid, msg .. "\n", true)
 
 	eventStatus.validDefaultHandler = false
 	return eventStatus
